@@ -7,7 +7,11 @@ export async function GET() {
     
     const { data: plans, error } = await supabase
       .from('subscription_plans')
-      .select('*')
+      .select(`
+        *,
+        stripe_price_id_monthly,
+        stripe_price_id_yearly
+      `)
       .eq('is_active', true)
       .order('price_monthly_gross', { ascending: true })
 

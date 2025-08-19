@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { User } from '@supabase/supabase-js'
+import { useStripe } from '@/hooks/useStripe'
+import { DatabaseSubscription } from '@/types/stripe'
 
 interface SubscriptionPlan {
   id: string
@@ -24,6 +26,8 @@ interface SubscriptionPlan {
   additional_services_discount_percent: number
   estimated_monthly_savings: number
   is_active: boolean
+  stripe_price_id_monthly?: string
+  stripe_price_id_yearly?: string
 }
 
 export default function SubscriptionPage() {
@@ -32,6 +36,8 @@ export default function SubscriptionPage() {
   const [plans, setPlans] = useState<SubscriptionPlan[]>([])
   const [plansLoading, setPlansLoading] = useState(true)
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly')
+  const [currentSubscription, setCurrentSubscription] = useState<DatabaseSubscription | null>(null)
+  const { getSubscription } = useStripe()
   const router = useRouter()
   const supabase = createClient()
 
@@ -46,20 +52,13 @@ export default function SubscriptionPage() {
 
       setUser(user)
       setLoading(false)
-
-      // Sprawdź czy użytkownik już ma aktywną subskrypcję
-      // const { data: subscription } = await supabase
-      //   .from('user_subscriptions')
-      //   .select('*')
-      //   .eq('user_id', user.id)
-      //   .eq('status', 'active')
-      //   .single()
-
-      // if (subscription) {
-      //   router.push('/complete-profile')
-      // }
     }
 
+    getUser()
+  }, [router, supabase])
+
+  // Pobierz plany subskrypcji oddzielnie
+  useEffect(() => {
     const getPlans = async () => {
       // Pobieraj plany tylko jeśli użytkownik jest zalogowany
       const { data: { user } } = await supabase.auth.getUser()
@@ -85,9 +84,24 @@ export default function SubscriptionPage() {
       }
     }
 
-    getUser()
     getPlans()
-  }, [router, supabase])
+  }, [supabase])
+
+  // Pobierz aktualną subskrypcję Stripe gdy użytkownik jest załadowany
+  useEffect(() => {
+    const fetchSubscription = async () => {
+      if (!user) return
+
+      try {
+        const subscription = await getSubscription()
+        setCurrentSubscription(subscription)
+      } catch (error) {
+        console.error('Error fetching subscription:', error)
+      }
+    }
+
+    fetchSubscription()
+  }, [user, getSubscription])
 
   const handleSubscriptionSelect = async (planId: string, cycle: 'monthly' | 'yearly' = billingCycle) => {
     if (!user) return
@@ -102,39 +116,33 @@ export default function SubscriptionPage() {
         return
       }
 
-      const isYearly = cycle === 'yearly'
-      const expiresAt = isYearly 
-        ? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString() // 365 dni
-        : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString() // 30 dni
+      // Użyj hook'a useStripe do utworzenia checkout session
+      await getSubscription() // This will trigger the stripe checkout
       
-      const periodEnd = isYearly
-        ? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString()
-        : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+      // Alternatywnie, można bezpośrednio wywołać API
+      const response = await fetch('/api/stripe/create-checkout-session', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          planId: selectedPlan.id,
+          cycle: cycle,
+          successUrl: `${window.location.origin}/dashboard?success=true`,
+          cancelUrl: `${window.location.origin}/subscription?canceled=true`,
+        }),
+      })
 
-      const { error: subscriptionError } = await supabase
-        .from('user_subscriptions')
-        .insert({
-          user_id: user.id,
-          plan_id: selectedPlan.id,
-          status: 'active',
-          started_at: new Date().toISOString(),
-          expires_at: expiresAt,
-          billing_cycle: cycle,
-          amount_paid_net: isYearly ? selectedPlan.price_yearly_net : selectedPlan.price_monthly_net,
-          amount_paid_gross: isYearly ? selectedPlan.price_yearly_gross : selectedPlan.price_monthly_gross,
-          currency: selectedPlan.currency,
-          current_period_start: new Date().toISOString(),
-          current_period_end: periodEnd
-        })
+      const data = await response.json()
 
-      if (subscriptionError) {
-        console.error('Błąd tworzenia subskrypcji:', subscriptionError)
-        alert('Błąd podczas tworzenia subskrypcji')
-        return
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to create checkout session')
       }
 
-      // Przekieruj do complete-profile
-      router.push('/complete-profile')
+      // Przekieruj do Stripe Checkout
+      if (data.url) {
+        window.location.href = data.url
+      }
     } catch (error) {
       console.error('Błąd:', error)
       alert('Wystąpił błąd podczas wyboru planu')
