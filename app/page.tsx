@@ -1,29 +1,32 @@
 import Link from 'next/link'
 import { Shield, Eye, Star, Users, MapPin, Trash2 } from 'lucide-react'
+import { Metadata } from 'next'
+
+export const metadata: Metadata = {
+  title: "Wizaro Monitor - Kompleksowa Ochrona Reputacji Biznesowej",
+  description: "Chroń swoją reputację online z Wizaro Monitor. Monitorowanie opinii w czasie rzeczywistym, zarządzanie profilami biznesowymi, usuwanie negatywnych wpisów i analityka reputacji. Rozpocznij za darmo!",
+  keywords: [
+    "ochrona reputacji online",
+    "monitoring opinii",
+    "zarządzanie reputacją firmy", 
+    "usuwanie negatywnych opinii",
+    "Google Maps zarządzanie",
+    "profile biznesowe",
+    "analityka reputacji",
+    "monitoring marki online",
+    "ochrona wizerunku firmy"
+  ],
+  openGraph: {
+    title: "Wizaro Monitor - Ochrona Reputacji Biznesowej",
+    description: "Kompleksowa ochrona reputacji online. Monitoruj opinie, zarządzaj profilami biznesowymi i chroń swoją markę w internecie.",
+    url: "https://monitor.wizaro.pl",
+    type: "website",
+  },
+}
 
 export default function Home() {
   return (
     <div className="min-h-screen bg-white">
-      {/* Header */}
-      <header className="border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-6">
-            <div className="flex items-center">
-              <Shield className="h-8 w-8 text-[#081D44]" />
-              <span className="ml-2 text-2xl font-bold text-[#081D44]">Wizaro Monitor</span>
-            </div>
-            <div className="flex items-center space-x-4">
-              <Link href="/login" className="text-gray-600 hover:text-[#081D44] font-medium">
-                Logowanie
-              </Link>
-              <Link href="/register" className="btn-primary">
-                Rejestracja
-              </Link>
-            </div>
-          </div>
-        </div>
-      </header>
-
       {/* Hero Section */}
       <section className="py-20 bg-gradient-to-br from-gray-50 to-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
@@ -123,21 +126,6 @@ export default function Home() {
           </Link>
         </div>
       </section>
-
-      {/* Footer */}
-      <footer className="bg-gray-100 py-12">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col md:flex-row justify-between items-center">
-            <div className="flex items-center mb-4 md:mb-0">
-              <Shield className="h-6 w-6 text-[#081D44]" />
-              <span className="ml-2 text-lg font-semibold text-[#081D44]">Wizaro Monitor</span>
-            </div>
-            <div className="text-gray-600">
-              © 2024 Wizaro Monitor. Wszystkie prawa zastrzeżone.
-            </div>
-          </div>
-        </div>
-      </footer>
     </div>
   )
 }

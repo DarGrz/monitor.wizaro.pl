@@ -5,8 +5,9 @@ export async function GET(request: NextRequest) {
   const { searchParams, origin } = new URL(request.url)
   const code = searchParams.get('code')
   const next = searchParams.get('next')
+  const type = searchParams.get('type') // Sprawdź czy to reset hasła
   
-  console.log('Auth callback received:', { code: !!code, next, origin })
+  console.log('Auth callback received:', { code: !!code, next, type, origin })
 
   if (code) {
     const supabase = await createClient()
@@ -21,11 +22,18 @@ export async function GET(request: NextRequest) {
       console.log('User after exchange:', { 
         userId: user?.id, 
         email: user?.email,
-        profileCompleted: user?.user_metadata?.profile_completed 
+        profileCompleted: user?.user_metadata?.profile_completed,
+        type: type
       })
       
       if (user) {
-        // Sprawdź czy profil jest uzupełniony
+        // Sprawdź czy to resetowanie hasła
+        if (type === 'recovery') {
+          console.log('Redirecting to reset-password')
+          return NextResponse.redirect(`${origin}/reset-password`)
+        }
+        
+        // Sprawdź czy profil jest uzupełniony (dla normalnego logowania)
         if (user.user_metadata?.profile_completed) {
           // Profil uzupełniony - przekieruj na dashboard lub podaną stronę
           const redirectTo = next ?? '/dashboard'

@@ -15,7 +15,6 @@ import {
   EyeOff,
   MapPin,
   Phone,
-  Hash,
   Edit3
 } from 'lucide-react'
 import Link from 'next/link'

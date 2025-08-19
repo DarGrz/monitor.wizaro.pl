@@ -11,8 +11,7 @@ import {
   Users, 
   MapPin, 
   Trash2, 
-  Settings, 
-  LogOut,
+  Settings,
   Search,
   Bell,
   TrendingUp
@@ -28,6 +27,19 @@ export default function Dashboard() {
     const getUser = async () => {
       const { data: { user } } = await supabase.auth.getUser()
       if (user) {
+        // Sprawdź czy użytkownik ma aktywną subskrypcję
+        const { data: subscription } = await supabase
+          .from('user_subscriptions')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('status', 'active')
+          .single()
+
+        if (!subscription) {
+          router.push('/subscription')
+          return
+        }
+        
         // Sprawdź czy profil jest uzupełniony
         if (!user.user_metadata?.profile_completed) {
           router.push('/complete-profile')
@@ -41,12 +53,7 @@ export default function Dashboard() {
     }
 
     getUser()
-  }, [router, supabase.auth])
-
-  const handleLogout = async () => {
-    await supabase.auth.signOut()
-    router.push('/')
-  }
+  }, [router, supabase])
 
   if (loading) {
     return (
@@ -65,43 +72,6 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-4">
-            <div className="flex items-center">
-              <Shield className="h-8 w-8 text-[#081D44]" />
-              <span className="ml-2 text-2xl font-bold text-[#081D44]">Wizaro Monitor</span>
-            </div>
-            <div className="flex items-center space-x-4">
-              <Bell className="h-6 w-6 text-gray-400 hover:text-[#081D44] cursor-pointer" />
-              <div className="flex items-center space-x-3">
-                <div className="text-right">
-                  <p className="text-sm font-medium text-gray-900">
-                    {user.user_metadata?.first_name} {user.user_metadata?.last_name}
-                  </p>
-                  <p className="text-xs text-gray-500">{user.user_metadata?.company}</p>
-                </div>
-                <a 
-                  href="/profile"
-                  className="w-8 h-8 bg-[#081D44] rounded-full flex items-center justify-center hover:bg-[#081D44]/90 transition-colors"
-                >
-                  <span className="text-white text-sm font-medium">
-                    {user.user_metadata?.first_name?.[0]}{user.user_metadata?.last_name?.[0]}
-                  </span>
-                </a>
-              </div>
-              <button
-                onClick={handleLogout}
-                className="text-gray-400 hover:text-red-600 transition-colors"
-              >
-                <LogOut className="h-6 w-6" />
-              </button>
-            </div>
-          </div>
-        </div>
-      </header>
-
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Welcome Section */}
         <div className="mb-8">

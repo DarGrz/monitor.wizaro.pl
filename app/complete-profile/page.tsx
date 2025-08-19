@@ -27,6 +27,20 @@ export default function CompleteProfile() {
       const { data: { user } } = await supabase.auth.getUser()
       if (user) {
         setUser(user)
+        
+        // Sprawdź czy użytkownik ma aktywną subskrypcję
+        const { data: subscription } = await supabase
+          .from('user_subscriptions')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('status', 'active')
+          .single()
+
+        if (!subscription) {
+          router.push('/subscription')
+          return
+        }
+        
         // Sprawdź czy profil jest już uzupełniony
         if (user.user_metadata?.profile_completed) {
           router.push('/dashboard')
@@ -37,7 +51,7 @@ export default function CompleteProfile() {
     }
 
     getUser()
-  }, [router, supabase.auth])
+  }, [router, supabase])
 
   const handleSearchNIP = async (nipValue?: string) => {
     const nipToSearch = nipValue || nip
@@ -84,12 +98,20 @@ export default function CompleteProfile() {
 
     try {
       console.log('💾 Starting profile completion process')
+      console.log('📋 Form data:', { firstName, lastName, phone })
+      console.log('🏢 Company data to save:', companyData)
 
       // 1. Zapisz dane firmy do bazy danych
+      console.log('⏳ Calling saveCompany function...')
       const companySaved = await saveCompany(companyData)
+      console.log('📊 SaveCompany result:', companySaved)
+      
       if (!companySaved) {
+        console.error('❌ SaveCompany returned false')
         throw new Error('Nie udało się zapisać danych firmy')
       }
+
+      console.log('✅ Company saved successfully, updating user metadata...')
 
       // 2. Aktualizuj metadane użytkownika (podstawowe dane osobowe)
       const { error: userError } = await supabase.auth.updateUser({
@@ -102,6 +124,7 @@ export default function CompleteProfile() {
       })
 
       if (userError) {
+        console.error('❌ User update error:', userError)
         throw new Error('Wystąpił błąd podczas aktualizacji profilu: ' + userError.message)
       }
 
@@ -110,9 +133,15 @@ export default function CompleteProfile() {
 
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Wystąpił błąd podczas aktualizacji profilu'
-      console.error('❌ Profile completion error:', errorMessage)
+      console.error('💥 Profile completion error caught:', {
+        error: err,
+        errorMessage: errorMessage,
+        companyError: companyError,
+        stack: err instanceof Error ? err.stack : 'no stack'
+      })
       setError(errorMessage)
     } finally {
+      console.log('🏁 Profile completion finished, setting loading to false')
       setLoading(false)
     }
   }
@@ -139,7 +168,7 @@ export default function CompleteProfile() {
             Uzupełnij swój profil
           </h2>
           <p className="mt-2 text-center text-sm text-gray-600">
-            Wprowadź swoje dane i NIP firmy, aby dokończyć konfigurację konta
+            Wprowadź swoje dane i NIP firmy, której wizerunek chcesz chronić
           </p>
         </div>
         
@@ -180,7 +209,7 @@ export default function CompleteProfile() {
             
             <div>
               <label htmlFor="nip" className="block text-sm font-medium text-gray-700">
-                NIP firmy *
+                NIP firmy do ochrony *
               </label>
               <div className="mt-1 flex rounded-lg shadow-sm">
                 <input
