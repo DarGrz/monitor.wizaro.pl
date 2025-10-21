@@ -4,9 +4,10 @@ import { getPayUOrder, getPaymentStatusDescription } from '@/lib/payu/utils'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { orderId: string } }
+  context: { params: Promise<{ orderId: string }> }
 ) {
   try {
+    const { orderId } = await context.params
     const supabase = await createClient()
 
     // Sprawdź autoryzację użytkownika
@@ -18,8 +19,6 @@ export async function GET(
         { status: 401 }
       )
     }
-
-    const { orderId } = params
 
     if (!orderId) {
       return NextResponse.json(

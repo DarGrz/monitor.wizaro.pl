@@ -5,10 +5,10 @@ import { PAYU_CONFIG } from '@/lib/payu/config'
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { orderId: string } }
+  context: { params: Promise<{ orderId: string }> }
 ) {
   try {
-    const { orderId } = params
+    const { orderId } = await context.params
     
     console.log('PayU Payment Page Request for orderId:', orderId)
 

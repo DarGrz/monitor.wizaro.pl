@@ -37,8 +37,9 @@ async function debugPayUAPI() {
     try {
       oauthData = JSON.parse(oauthText)
       console.log('✅ OAuth Success - Token Type:', oauthData.token_type)
-    } catch (e) {
+    } catch (error) {
       console.error('❌ OAuth response is not JSON')
+      console.error('Error:', error)
       return
     }
     

@@ -5,7 +5,6 @@ import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Shield, Eye, EyeOff } from 'lucide-react'
-import { Metadata } from 'next'
 
 // Note: Metadata export nie działa w client components, więc dodamy meta tagi w layout lub używając next/head
 
