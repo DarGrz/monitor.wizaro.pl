@@ -4,8 +4,22 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { User } from '@supabase/supabase-js'
-import { useStripe } from '@/hooks/useStripe'
-import { DatabaseSubscription } from '@/types/stripe'
+
+interface CompanyData {
+  id: string
+  user_id: string
+  company_name: string
+  nip: string
+  regon?: string
+  krs?: string
+  street: string
+  building_number: string
+  apartment_number?: string
+  city: string
+  zip_code: string
+  created_at: string
+  updated_at: string
+}
 
 interface SubscriptionPlan {
   id: string
@@ -26,20 +40,89 @@ interface SubscriptionPlan {
   additional_services_discount_percent: number
   estimated_monthly_savings: number
   is_active: boolean
-  stripe_price_id_monthly?: string
-  stripe_price_id_yearly?: string
 }
+
+// Plany subskrypcji na sztywno
+const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
+  {
+    id: 'basic',
+    name: 'basic',
+    display_name: 'Plan Podstawowy',
+    description: 'Idealny dla małych firm rozpoczynających dbanie o swój wizerunek w internecie.',
+    price_monthly_net: 649.59,
+    price_monthly_gross: 799,
+    price_yearly_net: 5680,
+    price_yearly_gross: 6988,
+    currency: 'PLN',
+    max_companies: 1,
+    max_opinion_removals_monthly: 2,
+    has_negative_monitoring: true,
+    has_weekly_reports: false,
+    has_email_notifications: true,
+    has_instant_notifications: false,
+    additional_services_discount_percent: 0,
+    estimated_monthly_savings: 18,
+    is_active: true
+  },
+  {
+    id: 'professional',
+    name: 'professional',
+    display_name: 'Plan Profesjonalny',
+    description: 'Dla firm które chcą kompleksowo dbać o swój wizerunek z dodatkowymi funkcjami.',
+    price_monthly_net: 999,
+    price_monthly_gross: 1299,
+    price_yearly_net: 999,
+    price_yearly_gross:  12290 ,
+    currency: 'PLN',
+    max_companies: 3,
+    max_opinion_removals_monthly: 5,
+    has_negative_monitoring: true,
+    has_weekly_reports: true,
+    has_email_notifications: true,
+    has_instant_notifications: true,
+    additional_services_discount_percent: 10,
+    estimated_monthly_savings: 40,
+    is_active: true
+  },
+  {
+    id: 'enterprise',
+    name: 'enterprise',
+    display_name: 'Plan Enterprise',
+    description: 'Dla dużych firm wymagających zaawansowanego monitoringu i nieograniczonych możliwości.',
+    price_monthly_net: 399,
+    price_monthly_gross: 491,
+    price_yearly_net: 3990,
+    price_yearly_gross: 4908,
+    currency: 'PLN',
+    max_companies: 999,
+    max_opinion_removals_monthly: 15,
+    has_negative_monitoring: true,
+    has_weekly_reports: true,
+    has_email_notifications: true,
+    has_instant_notifications: true,
+    additional_services_discount_percent: 20,
+    estimated_monthly_savings: 80,
+    is_active: true
+  }
+]
 
 export default function SubscriptionPage() {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
-  const [plans, setPlans] = useState<SubscriptionPlan[]>([])
-  const [plansLoading, setPlansLoading] = useState(true)
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly')
-  const [currentSubscription, setCurrentSubscription] = useState<DatabaseSubscription | null>(null)
-  const { getSubscription } = useStripe()
+  const [companyData, setCompanyData] = useState<CompanyData | null>(null)
+  const [paymentLoading, setPaymentLoading] = useState(false)
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>('card')
   const router = useRouter()
   const supabase = createClient()
+
+  // Dostępne metody płatności PayU
+  const paymentMethods = [
+    { id: 'card', name: 'Karta płatnicza', icon: '💳', description: 'Visa, Mastercard, Maestro' },
+    { id: 'blik', name: 'BLIK', icon: '📱', description: 'Płatność kodem z aplikacji banku' },
+    { id: 'transfer', name: 'Przelew bankowy', icon: '🏦', description: 'Tradycyjny przelew' },
+    { id: 'paypal', name: 'PayPal', icon: '🅿️', description: 'Szybka płatność PayPal' },
+  ]
 
   useEffect(() => {
     const getUser = async () => {
@@ -50,113 +133,90 @@ export default function SubscriptionPage() {
         return
       }
 
+      // Sprawdź czy profil jest uzupełniony
+      if (!user.user_metadata?.profile_completed) {
+        router.push('/complete-profile')
+        return
+      }
+
       setUser(user)
+      
+      // Pobierz dane firmy użytkownika
+      const { data: company } = await supabase
+        .from('user_companies')
+        .select('*')
+        .eq('user_id', user.id)
+        .single()
+      
+      setCompanyData(company)
       setLoading(false)
     }
 
     getUser()
   }, [router, supabase])
 
-  // Pobierz plany subskrypcji oddzielnie
-  useEffect(() => {
-    const getPlans = async () => {
-      // Pobieraj plany tylko jeśli użytkownik jest zalogowany
-      const { data: { user } } = await supabase.auth.getUser()
-      
-      if (!user) {
-        setPlansLoading(false)
-        return
-      }
-
-      try {
-        const response = await fetch('/api/subscription-plans')
-        const data = await response.json()
-        
-        if (response.ok) {
-          setPlans(data.plans || [])
-        } else {
-          console.error('Error fetching plans:', data.error)
-        }
-      } catch (error) {
-        console.error('Error fetching plans:', error)
-      } finally {
-        setPlansLoading(false)
-      }
-    }
-
-    getPlans()
-  }, [supabase])
-
-  // Pobierz aktualną subskrypcję Stripe gdy użytkownik jest załadowany
-  useEffect(() => {
-    const fetchSubscription = async () => {
-      if (!user) return
-
-      try {
-        const subscription = await getSubscription()
-        setCurrentSubscription(subscription)
-      } catch (error) {
-        console.error('Error fetching subscription:', error)
-      }
-    }
-
-    fetchSubscription()
-  }, [user, getSubscription])
-
-  const handleSubscriptionSelect = async (planId: string, cycle: 'monthly' | 'yearly' = billingCycle) => {
-    if (!user) return
-
+  const handleSubscriptionSelect = async (plan: SubscriptionPlan) => {
+    if (!user || paymentLoading) return
+    
+    setPaymentLoading(true)
+    
     try {
-      setLoading(true)
+      const price = billingCycle === 'monthly' ? plan.price_monthly_gross : plan.price_yearly_gross
+      const planDuration = billingCycle === 'monthly' ? 'monthly' : 'yearly'
       
-      // Znajdź wybrany plan
-      const selectedPlan = plans.find(plan => plan.id === planId)
-      if (!selectedPlan) {
-        alert('Nie znaleziono planu subskrypcji')
-        return
-      }
-
-      // Użyj hook'a useStripe do utworzenia checkout session
-      await getSubscription() // This will trigger the stripe checkout
-      
-      // Alternatywnie, można bezpośrednio wywołać API
-      const response = await fetch('/api/stripe/create-checkout-session', {
+      // Wywołaj API PayU do utworzenia płatności
+      const response = await fetch('/api/payu/create-payment', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          planId: selectedPlan.id,
-          cycle: cycle,
-          successUrl: `${window.location.origin}/dashboard?success=true`,
-          cancelUrl: `${window.location.origin}/subscription?canceled=true`,
+          planId: plan.id,
+          billingCycle: planDuration,
+          amount: Math.round(price * 100), // PayU oczekuje kwoty w groszach
+          paymentMethod: selectedPaymentMethod, // Dodana metoda płatności
+          customerData: companyData ? {
+            email: user.email,
+            firstName: companyData.company_name,
+            companyName: companyData.company_name,
+            nip: companyData.nip,
+            address: {
+              street: companyData.street,
+              buildingNumber: companyData.building_number,
+              apartmentNumber: companyData.apartment_number,
+              city: companyData.city,
+              zipCode: companyData.zip_code
+            }
+          } : {
+            email: user.email
+          }
         }),
       })
 
       const data = await response.json()
 
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to create checkout session')
+        throw new Error(data.error || 'Wystąpił błąd podczas tworzenia płatności')
       }
 
-      // Przekieruj do Stripe Checkout
-      if (data.url) {
-        window.location.href = data.url
+      // Przekieruj do PayU
+      if (data.redirectUri) {
+        window.location.href = data.redirectUri
       }
     } catch (error) {
-      console.error('Błąd:', error)
-      alert('Wystąpił błąd podczas wyboru planu')
+      console.error('Błąd podczas tworzenia płatności PayU:', error)
+      alert('Wystąpił błąd podczas tworzenia płatności. Spróbuj ponownie.')
     } finally {
-      setLoading(false)
+      setPaymentLoading(false)
     }
   }
 
-  if (loading || plansLoading) {
+  if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Ładowanie planów subskrypcji...</p>
+          <p className="text-gray-600">Ładowanie...</p>
         </div>
       </div>
     )
@@ -221,10 +281,34 @@ export default function SubscriptionPage() {
               </div>
             </div>
           )}
+
+          {/* Sekcja wyboru metody płatności */}
+          <div className="max-w-4xl mx-auto mb-8">
+            <h3 className="text-lg font-semibold text-gray-900 text-center mb-4">
+              Wybierz metodę płatności
+            </h3>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+              {paymentMethods.map((method) => (
+                <button
+                  key={method.id}
+                  onClick={() => setSelectedPaymentMethod(method.id)}
+                  className={`p-4 border-2 rounded-lg transition-all text-center ${
+                    selectedPaymentMethod === method.id
+                      ? 'border-blue-500 bg-blue-50 text-blue-700'
+                      : 'border-gray-200 hover:border-gray-300 text-gray-600'
+                  }`}
+                >
+                  <div className="text-2xl mb-2">{method.icon}</div>
+                  <div className="font-medium text-sm">{method.name}</div>
+                  <div className="text-xs text-gray-500 mt-1">{method.description}</div>
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
-          {plans.map((plan) => (
+          {SUBSCRIPTION_PLANS.map((plan) => (
             <div 
               key={plan.id} 
               className={`bg-white rounded-lg shadow-lg p-6 border-2 relative flex flex-col min-h-[500px] ${
@@ -247,22 +331,28 @@ export default function SubscriptionPage() {
                 {billingCycle === 'monthly' ? (
                   <div className="mb-3">
                     <div className="text-3xl lg:text-4xl font-bold text-blue-600">
-                      {plan.price_monthly_net.toFixed(0)} {plan.currency}
+                      {plan.price_monthly_gross.toFixed(0)} {plan.currency}
                     </div>
                     <div className="text-sm text-gray-600">
-                      /miesiąc <span className="font-medium text-gray-800">(netto)</span>
+                      /miesiąc <span className="font-medium text-gray-800">(brutto)</span>
+                    </div>
+                    <div className="text-xs text-gray-500 mt-1">
+                      {plan.price_monthly_net.toFixed(0)} {plan.currency} netto + 23% VAT
                     </div>
                   </div>
                 ) : (
                   <div className="mb-3">
                     <div className="text-3xl lg:text-4xl font-bold text-blue-600">
-                      {plan.price_yearly_net.toFixed(0)} {plan.currency}
+                      {plan.price_yearly_gross.toFixed(0)} {plan.currency}
                     </div>
                     <div className="text-sm text-gray-600">
-                      /rok <span className="font-medium text-gray-800">(netto)</span>
+                      /rok <span className="font-medium text-gray-800">(brutto)</span>
+                    </div>
+                    <div className="text-xs text-gray-500 mt-1">
+                      {plan.price_yearly_net.toFixed(0)} {plan.currency} netto + 23% VAT
                     </div>
                     <div className="text-sm text-gray-500 mt-1">
-                      = {(plan.price_yearly_net / 12).toFixed(0)} {plan.currency}/miesiąc
+                      = {(plan.price_yearly_gross / 12).toFixed(0)} {plan.currency}/miesiąc
                     </div>
                   </div>
                 )}
@@ -348,15 +438,24 @@ export default function SubscriptionPage() {
               </ul>
               
               <button 
-                onClick={() => handleSubscriptionSelect(plan.id, billingCycle)}
-                className="w-full bg-blue-600 text-white py-3 px-4 rounded-lg hover:bg-blue-700 transition-colors font-medium mt-auto"
-                disabled={loading}
+                onClick={() => handleSubscriptionSelect(plan)}
+                disabled={paymentLoading}
+                className={`w-full py-3 px-4 rounded-lg font-medium mt-auto transition-colors ${
+                  paymentLoading 
+                    ? 'bg-gray-400 text-gray-200 cursor-not-allowed' 
+                    : 'bg-blue-600 text-white hover:bg-blue-700'
+                }`}
               >
-                {loading ? 'Przetwarzanie...' : 
+                {paymentLoading ? (
+                  <div className="flex items-center justify-center">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Przekierowywanie...
+                  </div>
+                ) : (
                   billingCycle === 'yearly' 
-                    ? `Wybierz za ${plan.price_yearly_net.toFixed(0)} ${plan.currency}/rok`
-                    : `Wybierz za ${plan.price_monthly_net.toFixed(0)} ${plan.currency}/miesiąc`
-                }
+                    ? `Wybierz za ${plan.price_yearly_gross.toFixed(0)} ${plan.currency}/rok`
+                    : `Wybierz za ${plan.price_monthly_gross.toFixed(0)} ${plan.currency}/miesiąc`
+                )}
               </button>
             </div>
           ))}
@@ -367,7 +466,7 @@ export default function SubscriptionPage() {
             Wszystkie plany zawierają 14-dniowy okres próbny bez zobowiązań
           </p>
           <p className="text-xs text-gray-500">
-            * Ceny podane netto, do kwoty należy doliczyć VAT
+            * Ceny podane brutto (zawierają 23% VAT)
           </p>
           {billingCycle === 'yearly' && (
             <p className="text-sm text-green-600 font-medium mt-2">

@@ -28,22 +28,21 @@ export default function CompleteProfile() {
       if (user) {
         setUser(user)
         
-        // Sprawdź czy użytkownik ma aktywną subskrypcję
-        const { data: subscription } = await supabase
-          .from('user_subscriptions')
-          .select('*')
-          .eq('user_id', user.id)
-          .eq('status', 'active')
-          .single()
-
-        if (!subscription) {
-          router.push('/subscription')
-          return
-        }
-        
         // Sprawdź czy profil jest już uzupełniony
         if (user.user_metadata?.profile_completed) {
-          router.push('/dashboard')
+          // Sprawdź czy użytkownik ma aktywną subskrypcję
+          const { data: subscription } = await supabase
+            .from('user_subscriptions')
+            .select('*')
+            .eq('user_id', user.id)
+            .eq('status', 'active')
+            .single()
+
+          if (subscription) {
+            router.push('/dashboard')
+          } else {
+            router.push('/subscription')
+          }
         }
       } else {
         router.push('/login')
@@ -129,7 +128,7 @@ export default function CompleteProfile() {
       }
 
       console.log('✅ Profile completed successfully')
-      router.push('/dashboard')
+      router.push('/subscription')
 
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Wystąpił błąd podczas aktualizacji profilu'
@@ -168,7 +167,7 @@ export default function CompleteProfile() {
             Uzupełnij swój profil
           </h2>
           <p className="mt-2 text-center text-sm text-gray-600">
-            Wprowadź swoje dane i NIP firmy, której wizerunek chcesz chronić
+            Wprowadź swoje dane i NIP firmy
           </p>
         </div>
         

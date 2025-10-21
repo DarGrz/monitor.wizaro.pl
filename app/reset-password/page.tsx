@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter} from 'next/navigation'
 import Link from 'next/link'
 import { Shield, Eye, EyeOff, CheckCircle } from 'lucide-react'
 
@@ -15,7 +15,6 @@ function ResetPasswordForm() {
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
   const router = useRouter()
-  const searchParams = useSearchParams()
   const supabase = createClient()
 
   useEffect(() => {

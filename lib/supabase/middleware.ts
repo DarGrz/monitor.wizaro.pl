@@ -54,6 +54,8 @@ export const updateSession = async (request: NextRequest) => {
     !request.nextUrl.pathname.startsWith('/reset-password') &&
     !request.nextUrl.pathname.startsWith('/complete-profile') &&
     !request.nextUrl.pathname.startsWith('/email-confirmation') &&
+    !request.nextUrl.pathname.startsWith('/api/payu') &&  // Dodajemy wyjątek dla PayU API
+    !request.nextUrl.pathname.startsWith('/api/gus') &&   // Dodajemy wyjątek dla GUS API
     request.nextUrl.pathname !== '/'
   ) {
     // no user, potentially respond by redirecting the user to the login page
