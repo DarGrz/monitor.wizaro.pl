@@ -23,16 +23,16 @@ async function testConnection() {
     const { data: authData, error: authError } = await supabase.auth.getUser()
     console.log('👤 Auth test:', { authData, authError })
     
-    // Test database access - sprawdź czy tabela subscription_plans istnieje
+    // Test database access - sprawdź czy tabela users istnieje
     console.log('🗄️ Testing database access...')
     
-    // Sprawdź subscription_plans
-    const { data: plansData, error: plansError } = await supabase
-      .from('subscription_plans')
+    // Sprawdź users table
+    const { data: usersData, error: usersError } = await supabase
+      .from('users')
       .select('*')
       .limit(1)
     
-    console.log('📊 subscription_plans test:', { data: plansData, error: plansError })
+    console.log('� users test:', { data: usersData, error: usersError })
     
     if (plansError) {
       console.error('❌ subscription_plans error:')

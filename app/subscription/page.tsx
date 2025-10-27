@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useRouter } from 'next/navigation'
 import { User } from '@supabase/supabase-js'
+import { useSubscriptionPlans, type SubscriptionPlan } from '@/hooks/useSubscriptionPlans'
 
 interface CompanyData {
   id: string
@@ -21,90 +22,7 @@ interface CompanyData {
   updated_at: string
 }
 
-interface SubscriptionPlan {
-  id: string
-  name: string
-  display_name: string
-  description: string
-  price_monthly_net: number
-  price_monthly_gross: number
-  price_yearly_net: number
-  price_yearly_gross: number
-  currency: string
-  max_companies: number
-  max_opinion_removals_monthly: number
-  has_negative_monitoring: boolean
-  has_weekly_reports: boolean
-  has_email_notifications: boolean
-  has_instant_notifications: boolean
-  additional_services_discount_percent: number
-  estimated_monthly_savings: number
-  is_active: boolean
-}
 
-// Plany subskrypcji na sztywno
-const SUBSCRIPTION_PLANS: SubscriptionPlan[] = [
-  {
-    id: 'basic',
-    name: 'basic',
-    display_name: 'Plan Podstawowy',
-    description: 'Idealny dla małych firm rozpoczynających dbanie o swój wizerunek w internecie.',
-    price_monthly_net: 649.59,
-    price_monthly_gross: 799,
-    price_yearly_net: 5680,
-    price_yearly_gross: 6988,
-    currency: 'PLN',
-    max_companies: 1,
-    max_opinion_removals_monthly: 2,
-    has_negative_monitoring: true,
-    has_weekly_reports: false,
-    has_email_notifications: true,
-    has_instant_notifications: false,
-    additional_services_discount_percent: 0,
-    estimated_monthly_savings: 18,
-    is_active: true
-  },
-  {
-    id: 'professional',
-    name: 'professional',
-    display_name: 'Plan Profesjonalny',
-    description: 'Dla firm które chcą kompleksowo dbać o swój wizerunek z dodatkowymi funkcjami.',
-    price_monthly_net: 999,
-    price_monthly_gross: 1299,
-    price_yearly_net: 999,
-    price_yearly_gross:  12290 ,
-    currency: 'PLN',
-    max_companies: 3,
-    max_opinion_removals_monthly: 5,
-    has_negative_monitoring: true,
-    has_weekly_reports: true,
-    has_email_notifications: true,
-    has_instant_notifications: true,
-    additional_services_discount_percent: 10,
-    estimated_monthly_savings: 40,
-    is_active: true
-  },
-  {
-    id: 'enterprise',
-    name: 'enterprise',
-    display_name: 'Plan Enterprise',
-    description: 'Dla dużych firm wymagających zaawansowanego monitoringu i nieograniczonych możliwości.',
-    price_monthly_net: 399,
-    price_monthly_gross: 491,
-    price_yearly_net: 3990,
-    price_yearly_gross: 4908,
-    currency: 'PLN',
-    max_companies: 999,
-    max_opinion_removals_monthly: 15,
-    has_negative_monitoring: true,
-    has_weekly_reports: true,
-    has_email_notifications: true,
-    has_instant_notifications: true,
-    additional_services_discount_percent: 20,
-    estimated_monthly_savings: 80,
-    is_active: true
-  }
-]
 
 export default function SubscriptionPage() {
   const [user, setUser] = useState<User | null>(null)
@@ -112,17 +30,11 @@ export default function SubscriptionPage() {
   const [billingCycle, setBillingCycle] = useState<'monthly' | 'yearly'>('monthly')
   const [companyData, setCompanyData] = useState<CompanyData | null>(null)
   const [paymentLoading, setPaymentLoading] = useState(false)
-  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>('card')
   const router = useRouter()
   const supabase = createClient()
-
-  // Dostępne metody płatności PayU
-  const paymentMethods = [
-    { id: 'card', name: 'Karta płatnicza', icon: '💳', description: 'Visa, Mastercard, Maestro' },
-    { id: 'blik', name: 'BLIK', icon: '📱', description: 'Płatność kodem z aplikacji banku' },
-    { id: 'transfer', name: 'Przelew bankowy', icon: '🏦', description: 'Tradycyjny przelew' },
-    { id: 'paypal', name: 'PayPal', icon: '🅿️', description: 'Szybka płatność PayPal' },
-  ]
+  
+  // Pobierz plany z bazy danych
+  const { plans: SUBSCRIPTION_PLANS, loading: plansLoading, error: plansError } = useSubscriptionPlans()
 
   useEffect(() => {
     const getUser = async () => {
@@ -155,6 +67,13 @@ export default function SubscriptionPage() {
     getUser()
   }, [router, supabase])
 
+  // Dodaj obsługę błędu planów
+  useEffect(() => {
+    if (plansError) {
+      console.error('Błąd ładowania planów:', plansError)
+    }
+  }, [plansError])
+
   const handleSubscriptionSelect = async (plan: SubscriptionPlan) => {
     if (!user || paymentLoading) return
     
@@ -164,8 +83,8 @@ export default function SubscriptionPage() {
       const price = billingCycle === 'monthly' ? plan.price_monthly_gross : plan.price_yearly_gross
       const planDuration = billingCycle === 'monthly' ? 'monthly' : 'yearly'
       
-      // Wywołaj API PayU do utworzenia płatności
-      const response = await fetch('/api/payu/create-payment', {
+      // Wywołaj API Stripe do utworzenia płatności rekurencyjnej
+      const response = await fetch('/api/stripe/subscription', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -173,8 +92,7 @@ export default function SubscriptionPage() {
         body: JSON.stringify({
           planId: plan.id,
           billingCycle: planDuration,
-          amount: Math.round(price * 100), // PayU oczekuje kwoty w groszach
-          paymentMethod: selectedPaymentMethod, // Dodana metoda płatności
+          amount: price, // API route sam dokona konwersji na grosze
           customerData: companyData ? {
             email: user.email,
             firstName: companyData.company_name,
@@ -188,7 +106,8 @@ export default function SubscriptionPage() {
               zipCode: companyData.zip_code
             }
           } : {
-            email: user.email
+            email: user.email,
+            firstName: user.user_metadata?.name || 'Klient'
           }
         }),
       })
@@ -196,27 +115,44 @@ export default function SubscriptionPage() {
       const data = await response.json()
 
       if (!response.ok) {
-        throw new Error(data.error || 'Wystąpił błąd podczas tworzenia płatności')
+        throw new Error(data.error || 'Wystąpił błąd podczas tworzenia subskrypcji')
       }
 
-      // Przekieruj do PayU
+      // Przekieruj do Stripe Checkout
       if (data.redirectUri) {
         window.location.href = data.redirectUri
       }
     } catch (error) {
-      console.error('Błąd podczas tworzenia płatności PayU:', error)
-      alert('Wystąpił błąd podczas tworzenia płatności. Spróbuj ponownie.')
+      console.error('Błąd podczas tworzenia subskrypcji Stripe:', error)
+      alert('Wystąpił błąd podczas tworzenia subskrypcji. Spróbuj ponownie.')
     } finally {
       setPaymentLoading(false)
     }
   }
 
-  if (loading) {
+  if (loading || plansLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
           <p className="text-gray-600">Ładowanie...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Jeśli nie udało się załadować planów
+  if (plansError) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="text-red-600 mb-4">
+            <svg className="w-12 h-12 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L3.732 16.5c-.77.833.192 2.5 1.732 2.5z" />
+            </svg>
+          </div>
+          <p className="text-gray-600">Błąd ładowania planów subskrypcji</p>
+          <p className="text-sm text-gray-500 mt-2">{plansError}</p>
         </div>
       </div>
     )
@@ -281,30 +217,6 @@ export default function SubscriptionPage() {
               </div>
             </div>
           )}
-
-          {/* Sekcja wyboru metody płatności */}
-          <div className="max-w-4xl mx-auto mb-8">
-            <h3 className="text-lg font-semibold text-gray-900 text-center mb-4">
-              Wybierz metodę płatności
-            </h3>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              {paymentMethods.map((method) => (
-                <button
-                  key={method.id}
-                  onClick={() => setSelectedPaymentMethod(method.id)}
-                  className={`p-4 border-2 rounded-lg transition-all text-center ${
-                    selectedPaymentMethod === method.id
-                      ? 'border-blue-500 bg-blue-50 text-blue-700'
-                      : 'border-gray-200 hover:border-gray-300 text-gray-600'
-                  }`}
-                >
-                  <div className="text-2xl mb-2">{method.icon}</div>
-                  <div className="font-medium text-sm">{method.name}</div>
-                  <div className="text-xs text-gray-500 mt-1">{method.description}</div>
-                </button>
-              ))}
-            </div>
-          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
@@ -331,28 +243,28 @@ export default function SubscriptionPage() {
                 {billingCycle === 'monthly' ? (
                   <div className="mb-3">
                     <div className="text-3xl lg:text-4xl font-bold text-blue-600">
-                      {plan.price_monthly_gross.toFixed(0)} {plan.currency}
+                      {plan.price_monthly_net.toFixed(0)} {plan.currency}
                     </div>
                     <div className="text-sm text-gray-600">
-                      /miesiąc <span className="font-medium text-gray-800">(brutto)</span>
+                      /miesiąc <span className="font-medium text-gray-800">(netto)</span>
                     </div>
                     <div className="text-xs text-gray-500 mt-1">
-                      {plan.price_monthly_net.toFixed(0)} {plan.currency} netto + 23% VAT
+                      {plan.price_monthly_gross.toFixed(0)} {plan.currency} brutto (z 23% VAT)
                     </div>
                   </div>
                 ) : (
                   <div className="mb-3">
                     <div className="text-3xl lg:text-4xl font-bold text-blue-600">
-                      {plan.price_yearly_gross.toFixed(0)} {plan.currency}
+                      {plan.price_yearly_net.toFixed(0)} {plan.currency}
                     </div>
                     <div className="text-sm text-gray-600">
-                      /rok <span className="font-medium text-gray-800">(brutto)</span>
+                      /rok <span className="font-medium text-gray-800">(netto)</span>
                     </div>
                     <div className="text-xs text-gray-500 mt-1">
-                      {plan.price_yearly_net.toFixed(0)} {plan.currency} netto + 23% VAT
+                      {plan.price_yearly_gross.toFixed(0)} {plan.currency} brutto (z 23% VAT)
                     </div>
                     <div className="text-sm text-gray-500 mt-1">
-                      = {(plan.price_yearly_gross / 12).toFixed(0)} {plan.currency}/miesiąc
+                      = {(plan.price_yearly_net / 12).toFixed(0)} {plan.currency}/miesiąc netto
                     </div>
                   </div>
                 )}
@@ -453,8 +365,8 @@ export default function SubscriptionPage() {
                   </div>
                 ) : (
                   billingCycle === 'yearly' 
-                    ? `Wybierz za ${plan.price_yearly_gross.toFixed(0)} ${plan.currency}/rok`
-                    : `Wybierz za ${plan.price_monthly_gross.toFixed(0)} ${plan.currency}/miesiąc`
+                    ? `Wybierz za ${plan.price_yearly_net} ${plan.currency}/rok netto`
+                    : `Wybierz za ${plan.price_monthly_net} ${plan.currency}/miesiąc netto`
                 )}
               </button>
             </div>
@@ -462,11 +374,8 @@ export default function SubscriptionPage() {
         </div>
 
         <div className="text-center mt-10">
-          <p className="text-sm text-gray-600 mb-2">
-            Wszystkie plany zawierają 14-dniowy okres próbny bez zobowiązań
-          </p>
           <p className="text-xs text-gray-500">
-            * Ceny podane brutto (zawierają 23% VAT)
+            * Ceny podane netto + 23% VAT (brutto w małym druku)
           </p>
           {billingCycle === 'yearly' && (
             <p className="text-sm text-green-600 font-medium mt-2">
